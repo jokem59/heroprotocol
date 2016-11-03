@@ -64,9 +64,11 @@ def prepDictTE(dictTE):
             if len(parentTE[e]) < listLength:
                 parentTE[e].append(np.nan)
 
-    # remove parentTE['m_instanceList'] and parentTE['m_items']
-    parentTE.pop('m_instanceList', None)
-    parentTE.pop('m_items', None)
+    # clean parentTE
+    cleanParentTE = ['m_instanceList', 'm_items', 'm_count', 'm_killerUnitTagIndex', 'm_killerUnitTagRecycle',
+                     'm_slotId', 'm_upgradeTypeName', 'm_upkeepPlayerId', 'm_type']
+    for i in cleanParentTE:
+        parentTE.pop(i, None)
 
     # clean the values of parentTE['m_intData', 'm_stringData', 'm_fixedData']
     # keep same order as listOfDicts and subKeys below
@@ -91,12 +93,33 @@ def prepDictTE(dictTE):
             listOfDicts[i][key] = []
         listOfDicts[i]['replayId'] = []
         listOfDicts[i]['_gameloop'] = []
+        listOfDicts[i]['_bits'] = []
+        listOfDicts[i]['_eventid'] = []
 
     # populate values for m_intData, m_stringData, m_fixedData
     for i in range(len(listOfDicts)):
         populateTESubDicts(parentTE, listOfDicts[i], parentClean[i])
 
-    # remove m_intData, m_stringData, m_fixedData from parentTE
+    # remove 'GameTime', 'PreviousGameTime', 'Time' from m_fixedData
+    fixedDataClean = ['GameTime', 'PreviousGameTime', 'Time']
+    for i in fixedDataClean:
+        m_fixedData.pop(i, None)
+
+    # edit m_stringData "Hero" key to remove 'Hero' prefix from values
+    temp = []
+    for i in m_stringData['Hero']:
+        if isinstance(i, str):
+            temp.append(i.replace('Hero', ''))
+        else:
+            temp.append(i)
+    m_stringData['Hero'] = temp
+
+    # standardize PlayerID to m_userId reporting in m_intData, before{range(1,11)}, after{range(0,10)}
+    m_intData['m_userId'] = m_intData.pop('PlayerID')
+    m_intData['m_userId'][:] = [x - 1 for x in m_intData['m_userId']]
+
+    # remove m_playerId, m_intData, m_stringData, m_fixedData from parentTE
+    parentTE.pop('m_playerId', None)
     parentTE.pop('m_intData', None)
     parentTE.pop('m_stringData', None)
     parentTE.pop('m_fixedData', None)
@@ -191,6 +214,8 @@ def isDuplicateKeys(entry):
 def populateFromEntry(parentTE, subDict, entry, i):
     subDict['replayId'].append(parentTE['replayId'][i])
     subDict['_gameloop'].append(parentTE['_gameloop'][i])
+    subDict['_bits'].append(parentTE['_bits'][i])
+    subDict['_eventid'].append(parentTE['_eventid'][i])
     for d in entry:
         for k in d:
             subDict[k].append(d[k])
@@ -352,14 +377,14 @@ def prepDictInitData(dictInitData):
             # initialize keys in m_userInitialData
             for k in dictInitData[parent_key][sub_key][0]:
                 cur_dict[k] = []
-            cur_dict['m_workingSetSlotId'] = []
+            cur_dict['m_userId'] = []
             cur_dict['replayId'] = []
             slotId = 0
             # Populate dictionary with a list, each <list> entry is one <dict> entry
             for d in dictInitData[parent_key][sub_key]:
                 for entry in d:
                     cur_dict[entry].append(d[entry])
-                cur_dict['m_workingSetSlotId'].append(slotId)
+                cur_dict['m_userId'].append(slotId)
                 cur_dict['replayId'].append(replayId)
                 slotId += 1
 
@@ -382,19 +407,32 @@ def prepDictInitData(dictInitData):
         m_slots['replayId'].append(replayId)
 
     # clean m_slots
-    clean_m_slots = ['m_aiBuild', 'm_artifacts', 'm_licenses', 'm_logoIndex', 'm_racePref', 'm_rewards']
+    m_slots['m_userId'] = m_slots.pop('m_workingSetSlotId', None)
+    clean_m_slots = ['m_aiBuild', 'm_artifacts', 'm_licenses', 'm_logoIndex', 'm_racePref', 'm_rewards',
+                     'm_tandemLeaderUserId', 'm_control', 'm_difficulty']
     for k in clean_m_slots:
         m_slots.pop(k, None)
 
     # clean m_userInitialData
     clean_m_initData = ['m_customInterface', 'm_examine', 'm_hero', 'm_mount', 'm_randomSeed',
                         'm_skin', 'm_teamPreference', 'm_racePreference', 'm_testAuto', 'm_testMap',
-                        'm_testType', 'm_toonHandle', 'm_clanLogo']
+                        'm_testType', 'm_toonHandle', 'm_clanLogo', 'm_combinedRaceLevels']
     for k in clean_m_initData:
         m_userInitialData.pop(k, None)
 
     m_gameDescription = flatten(m_gameDescription)
     m_gameDescription = prepForDf(m_gameDescription)
+
+    # clean m_gameDescription
+    clean_m_gameDescription = ['m_defaultDifficulty', 'm_gameCacheName', 'm_gameOptions_m_advancedSharedControl',
+                               'm_gameOptions_m_amm', 'm_gameOptions_m_ammId', 'm_gameOptions_clientDebugFlags',
+                               'm_gameOptions_m_randomRaces', 'm_gameOptions_m_teamsTogether',
+                               'm_gameOptions_m_userDifficulty', 'm_mapAuthorName', 'm_mapFileSyncChecksum',
+                               'm_maxRaces', 'm_modFileSyncChecksum', 'm_gameOptions_m_clientDebugFlags',
+                               'm_hasExtensionMod', 'm_maxColors', 'm_maxControls']
+    for k in clean_m_gameDescription:
+        m_gameDescription.pop(k, None)
+
     m_slots = flatten(m_slots)
 
     return m_gameDescription, m_userInitialData, m_slots
@@ -443,12 +481,55 @@ def prepDictDetails(dictDetails):
     return m_playerList
 
 
+def testTEData(parentTE, m_intData, m_stringData, m_fixedData):
+    '''
+    @param: each <dict> of the --trackerevents output
+    @return: print statements if proper formatting exists, otherwise, a <list> of key lengths of incorrect <dict>
+    '''
+    check = [parentTE, m_intData, m_stringData, m_fixedData]
+    names = ['parentTE', 'm_intData', 'm_stringData', 'm_fixedData']
+
+    index = 0
+    for d in check:
+        count = 0
+        for k in d:
+            errors = False
+            if count == 0:
+                prevLength = len(d[k])
+            else:
+                if len(d[k]) != prevLength:
+                    errors = True
+                    print 'ERROR: <dict>', names[index], 'keys have differing lengths!'
+                    for k in d:
+                        print '{0:<25} {1:>5}'.format(k, len(d[k]))
+                    break
+                else:
+                    prevLength = len(d[k])
+            count += 1
+        if errors is False:
+            print 'SUCCESS: <dict>', names[index], 'is ready for DataFrame conversion!'
+        index += 1
+
+
 dictInitData = createDictInitData('../replayData/init_data.txt')
 replayId = getReplayId(dictInitData)
 
 if __name__ == '__main__':
     dictTE = createDictTGE('../replayData/tracker_events.txt')
     # dictGE = createDictTGE('../replayData/game_events.txt')
-    dictHeader = createDictAEDH('../replayData/header.txt')
-    dictDetails = createDictAEDH('../replayData/details.txt')
+    dictHeader = prepDictHeader(createDictAEDH('../replayData/header.txt'))
+    dictDetails = prepDictDetails(createDictAEDH('../replayData/details.txt'))
+    m_gameDescription, m_userInitialData, m_slots = prepDictInitData(dictInitData)
+    parentTE, m_intData, m_stringData, m_fixedData = prepDictTE(dictTE)
 
+    dfTE = pd.DataFrame(dictTE)
+    # dfGE = pd.DataFrame(dictGE)
+    dfHeader = pd.DataFrame(dictHeader)
+    dfDetails = pd.DataFrame(dictDetails)
+    df_m_gameDescription = pd.DataFrame(m_gameDescription)
+    df_m_userInitialData = pd.DataFrame(m_userInitialData)
+    df_m_slots = pd.DataFrame(m_slots)
+    dfParentTE = pd.DataFrame(parentTE)
+    df_m_intData = pd.DataFrame(m_intData)
+    df_m_stringData = pd.DataFrame(m_stringData)
+    df_m_fixedData = pd.DataFrame(m_fixedData)
