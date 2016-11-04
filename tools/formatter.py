@@ -159,16 +159,17 @@ def populateTESubDicts(parentTE, subDict, dictName):
         # e.g. entry = [{'PlayerID': 8}, {'KillingPlayer': 1}, {'KillingPlayer': 2}]
         entry = parentTE[dictName][i]
         if isinstance(entry, list):
-            # case where there are multiple instances of 'KillerPlayer' associated with one 'PlayerID'
             isDuplicates, duplicateKeys = isDuplicateKeys(entry)
-            if isDuplicates == False:
+            if not isDuplicates:
                 # populate all pertinent keys with one element
                 populateFromEntry(parentTE, subDict, entry, i)
+            # case where there are multiple instances of 'KillerPlayer' associated with one 'PlayerID'
             else:
-                for dupeKey in duplicateKeys:
+                dupeIndex = range(1, len(entry))
+                for num in dupeIndex:
                     newEntry = []
                     newEntry.append(entry[0])
-                    newEntry.append(entry[1])
+                    newEntry.append(entry[num])  # this value needs to be range(1, len(entry))
                     populateFromEntry(parentTE, subDict, newEntry, i)
 
 

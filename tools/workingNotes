@@ -1,0 +1,12 @@
+# Finding inconsistencies with dfParentTE and df_m_intData
+	In the original <list> of <dict>s, returning all <dict>s with '_gameloop' = 3235 returns one dictionary indicating the death of 'PlayerID' = 4, by 'KillingPlayer' = 7, 8, 9, 10.  This is followed up by 5 rows of 'm_eventName' = 'LevelUp'.
+
+	Do the dfParentTE and df_m_intData rows where '_gameloop' = 3235 represent this?
+		NO - it reports 'KillingPlayer' = 7 four times!
+		Investigate: cleanTESubDict() and populateTESubDicts()
+
+		cleanTESubDict() breaks out the key value pairs in a <dict> friendly format.  Most likely the source of error is in populateTESubDicts()
+
+		In populateTESubDicts(), the else statement never iterates over the <list> duplicateKeys which explains the 'KillingPlayer' = 7 reported four times
+
+		RESOLVED with edits to populateTESubDicts()
