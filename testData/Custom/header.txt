@@ -1,0 +1,12 @@
+{'m_dataBuildNum': 45635,
+ 'm_elapsedGameLoops': 20012,
+ 'm_ngdpRootKey': {},
+ 'm_signature': 'Heroes of the Storm replay\x1b11',
+ 'm_type': 2,
+ 'm_useScaledTime': False,
+ 'm_version': {'m_baseBuild': 45228,
+               'm_build': 45228,
+               'm_flags': 1,
+               'm_major': 0,
+               'm_minor': 19,
+               'm_revision': 4}}

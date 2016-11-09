@@ -6,12 +6,13 @@ import numpy as np
 import re
 
 
-def createDictTGE(parserOutput):
+def createDictTGE(output):
     '''
-    :param parserOutput: raw heroprotocol outputs --trackerevents, --gameevents
-    :return: <dictionary> of raw heroprotocol outputs
+    Converts raw heroprotocol outputs --trackerevents, --gameevents to a <dict>.
+    @param <file> parserOutput: raw heroprotocol outputs --trackerevents, --gameevents
+    @return: <dictionary> of raw heroprotocol outputs
     '''
-    with open(parserOutput, 'r') as f:
+    with open(output, 'r') as f:
         lines = f.readlines()
 
     temp_string = ''
@@ -39,10 +40,10 @@ def createDictTGE(parserOutput):
 
 def prepDictTE(dictTE):
     '''
-    Preps data and returns 4 <dict>s read for dataframe conversion, reference schema diagram
-    dictTE, m_intData, m_stringData, m_fixedData
-    Each dict/table record all tracker events and populate fields with np.nan if no values for that _gameloop
-    were present
+    Flattens tracker events <dict> and returns 4 sub-<dict> ready for Pandas <DataFrame> conversion.  Blank values
+    are populated with np.nan.
+    @param <list> dictTE: <list> of <dict> of --trackerevents, the output of createDictTGE
+    @return: <list> dictTE, <dict> m_intData, <dict> m_stringData, <dict> m_fixedData
     '''
     # initialize keys of parent table
     parentKeys = []
@@ -51,6 +52,8 @@ def prepDictTE(dictTE):
         for k in d.keys():
             if k not in parentKeys:
                 parentKeys.append(k)
+        if 'm_instanceList' in d:
+            summary = d
     for k in parentKeys:
         parentTE[k] = []
 
@@ -117,6 +120,10 @@ def prepDictTE(dictTE):
     # standardize PlayerID to m_userId reporting in m_intData, before{range(1,11)}, after{range(0,10)}
     m_intData['m_userId'] = m_intData.pop('PlayerID')
     m_intData['m_userId'][:] = [x - 1 for x in m_intData['m_userId']]
+    # adjust m_intData['KillingPlayer'] from range(1,11) to range(0,10) for consistency on userId
+    m_intData['KillingPlayer'] = [x - 1 for x in m_intData['KillingPlayer']]
+    # adjust m_intData['TeamLevel'] from range(1,3) to range(0,2)
+    m_intData['Team'] = [x - 1 for x in m_intData['Team']]
 
     # remove m_playerId, m_intData, m_stringData, m_fixedData from parentTE
     parentTE.pop('m_playerId', None)
@@ -124,12 +131,13 @@ def prepDictTE(dictTE):
     parentTE.pop('m_stringData', None)
     parentTE.pop('m_fixedData', None)
 
-    return parentTE, m_intData, m_stringData, m_fixedData
+    return parentTE, m_intData, m_stringData, m_fixedData, summary
 
 
 def cleanTESubDict(subDict):
     '''
-    helper function to clean parentTE['m_intData', 'm_stringData', 'm_fixedData']
+    prepDictTE() helper function to format parentTE['m_intData', 'm_stringData', 'm_fixedData'].
+    @param <dict> subDict: sub <dict> to the parent tracker events <dict>
     '''
     for i in subDict:
         if isinstance(i, list):
@@ -150,9 +158,10 @@ def cleanTESubDict(subDict):
 
 def populateTESubDicts(parentTE, subDict, dictName):
     '''
-    Helper function to prepDictTE
-    Param: subDict <dict>, dictionary to populate
-    Param: dictName <string>, string corresponding to <dict> name
+    prepDictTE() helper function to populate the sub <dict>.
+    @param <dict> parentTE: parent <dict> of tracker events
+    @param: <dict> subDict: <dict> to populate
+    @param: <str> dictName: <str> corresponding to <dict> name
     '''
     for i in range(len(parentTE[dictName])):
         # entry is a list of <dict>s
@@ -175,7 +184,9 @@ def populateTESubDicts(parentTE, subDict, dictName):
 
 def initializeTESubKeys(subDict):
     '''
-    helper function, takes sub-dict from TG and creates a comprehensive list of keys
+    prepDictTE() helper function that takes subDict from tracker events and creates a comprehensive list of keys.
+    @param <dict> subDict: <dict> to collect list of keys from
+    @return: <list> of all keys found in that subDict
     '''
     listOfKeys = []
     for i in subDict:
@@ -189,13 +200,14 @@ def initializeTESubKeys(subDict):
 
 
 def isDuplicateKeys(entry):
-    # @param: <list> of <dict>s
-    # @return: isDuplicates - True if there are multiple copies of same key:
-    # e.g. entry = [{'PlayerID': 8}, {'KillingPlayer': 1}, {'KillingPlayer': 2}]
-    # @return: duplicateKeys - <list> of duplicate keys, one per duplicate key
-    # checks to see if duplicate keys exists; e.g. multiple copies of 'KillingPlayer' associated with one 'PlayerID'
-    # if this is not addressed, the len(m_intData['KillingPlayer']) doesn't match the lengths of the other keys and
-    # a DataFrame cannot be constructed.
+    '''
+    Checks if duplicate keys exist; e.g. multiple copies of 'KillingPlayer' associated with one 'PlayerID', and
+    creates a new entry to tie each 'KillingPlayer' to 'PlayerID'.  Necessary to ensure all keys in <dict> have
+    <list> values of equal length.
+    @param <list> entry: a <list> of <dict>
+    @return <bool> isDuplicates: True or False
+    @return <list> duplicateKeys: <list> of all duplicate keys
+    '''
     keys = []
     for d in entry:
         for k in d:
@@ -213,6 +225,14 @@ def isDuplicateKeys(entry):
 
 
 def populateFromEntry(parentTE, subDict, entry, i):
+    '''
+    prepTESubDicts() helper function that works with isDuplicateKeys() to create separate entries for each duplicate
+    key.
+    @param <dict> parentTE: the parent <dict>
+    @param <dict> subDict: sub of the parent
+    @param <list> entry: <list> of <dict> of all entries of the duplicate keys associated with one 'PlayerID'
+    @param <int> i: index to keep track of position in entry
+    '''
     subDict['replayId'].append(parentTE['replayId'][i])
     subDict['_gameloop'].append(parentTE['_gameloop'][i])
     subDict['_bits'].append(parentTE['_bits'][i])
@@ -228,8 +248,9 @@ def populateFromEntry(parentTE, subDict, entry, i):
 
 def createDictInitData(initData):
     '''
-    :param initData: raw data output of heroprotocol --initdata
-    :return: python <dictionary> of --initdata for replayId information and JSON conversion
+    Converts raw heroprotocol outputs --initdata to a <dict>.
+    @param <file> initData: raw data output of heroprotocol --initdata
+    @return: python <dict> of --initdata for replayId information and JSON conversion
     '''
     with open(initData, 'r') as f:
         lines = f.readlines()
@@ -252,15 +273,15 @@ def createDictInitData(initData):
 
 def createDictAEDH(output):
     '''
-    :param output: raw data output of heroptocol --header, --details, --attributeevents
-    :return: <dictionary> of data outputs
+    Converts raw heroprotocol outputs --header, --details, --attributeevents to a <dict>.
+    @param <file> output: raw data output of heroprotocol --header, --details, --attributeevents
+    @return: python <dict> of --header, --details, --attributeevents
     '''
     with open(output, 'r') as f:
         dictOutput = ast.literal_eval(f.read())
     try:
         if dictOutput['m_cacheHandles']:
             dictOutput['m_cacheHandles'] = ['']
-
     except:
         pass
 
@@ -271,8 +292,9 @@ def createDictAEDH(output):
 
 def getReplayId(dictInitData):
     '''
-    :param dictInitData: <dictionary> object from output of createDictInitData()
-    :return: unique replayId
+    Generates a unique ReplayId based on 'm_randomValue' and player names.
+    @param <dict> dictInitData: <dict> from output of createDictInitData()
+    @return <int>: unique replayId
     '''
     randomValue = dictInitData['m_syncLobbyState']['m_gameDescription']['m_randomValue']
     playerNames = ''
@@ -286,6 +308,9 @@ def getReplayId(dictInitData):
 
 
 def renameKeys(data):
+    '''
+    Currently unused, consider using in the future.
+    '''
     for i in data:
         match = re.search('^m_', i)
         if match:
@@ -294,16 +319,15 @@ def renameKeys(data):
         match = re.search('^_', i)
         if match:
             new_key = i[2:len(i)]
-            dictDetails[new_key] = dictDetails.pop(i)
+            dictDetails[new_key] = dictDetails.pop
 
 
 def prepForDf(dictionary):
     '''
-    Preps <dictionary> for to proper pandas DataFrame format with values as lists.  Does NOT break out
-    embedded dictionaries.  Use function flattenDict() for that.
-
-    ONLY WORKS ON OUTPUTS THAT GENERATE ONE <dictionary>
-    NEED TO TEST and DEVELOP ON OUTPUTS THAT PROVIDE <list> of <dictionary>s
+    Preps <dict> to proper Pandas <DataFrame> format with values as lists.  Does NOT break out embedded dictionaries.
+    Use function flatten() for that.
+    @param <dict> dictionary: <dict> that requires formatting
+    @return <dict> dictionary: formatted <dict>
     '''
     for i in dictionary:
         # USE CASE 1: convert one <int> or <str> into a list for pandas DataFrame processing
@@ -338,13 +362,23 @@ def prepForDf(dictionary):
         if isinstance(dictionary[i], dict) and len(dictionary[i]) > 1:
             prepForDf(dictionary[i])
         # USE CASE 8: populate empty field with np.nan
-        if len(dictionary[i]) == 0 or dictionary[i] is None:
+        if dictionary[i] is None:
+            dictionary[i] = np.nan
+            continue
+        if len(dictionary[i]) == 0:
             dictionary[i] = np.nan
 
     return dictionary
 
 
 def flatten(d, parent_key='', sep='_'):
+    '''
+    Flattens embedded <dict> into parent <dict> by combining key names using '_' separator.
+    @param <dict> d: <dict> to be flattened
+    @param <str> parent_key: optional addition to new combined key
+    @param <str> sep: <str> to combine key names
+    @return: the flattened <dict>
+    '''
     items = []
     for k, v in d.items():
         new_key = str(parent_key) + sep + str(k) if parent_key else k
@@ -426,7 +460,10 @@ def prepDictInitData(dictInitData):
 
     # clean m_gameDescription
     clean_m_gameDescription = ['m_defaultDifficulty', 'm_gameCacheName', 'm_gameOptions_m_advancedSharedControl',
-                               'm_gameOptions_m_amm', 'm_gameOptions_m_ammId', 'm_gameOptions_clientDebugFlags',
+                               'm_gameOptions_clientDebugFlags', 'm_defaultAIBuild', 'm_gameOptions_m_battleNet',
+                               'm_gameOptions_m_competitive', 'm_gameOptions_m_cooperative', 'm_gameOptions_m_fog',
+                               'm_gameOptions_m_lockTeams', 'm_gameOptions_m_noVictoryOrDefeat',
+                               'm_gameOptions_m_practice', 'm_gameType', 'm_isCoopMode', 'm_isPremadeFFA',
                                'm_gameOptions_m_randomRaces', 'm_gameOptions_m_teamsTogether',
                                'm_gameOptions_m_userDifficulty', 'm_mapAuthorName', 'm_mapFileSyncChecksum',
                                'm_maxRaces', 'm_modFileSyncChecksum', 'm_gameOptions_m_clientDebugFlags',
@@ -474,6 +511,8 @@ def prepDictDetails(dictDetails):
             m_playerList[entry].append(d[entry])
         m_playerList['replayId'].append(replayId)
 
+    # rename 'm_workingSetSlotId' to 'm_userId' for consistency
+    m_playerList['m_userId'] = m_playerList.pop('m_workingSetSlotId')
     # clean m_playerList
     clean_m_playerList = ['m_race', 'm_color', 'm_toon']
     for k in clean_m_playerList:
@@ -512,16 +551,64 @@ def testTEData(parentTE, m_intData, m_stringData, m_fixedData):
         index += 1
 
 
-dictInitData = createDictInitData('../replayData/init_data.txt')
-replayId = getReplayId(dictInitData)
+def prepSummary(summary):
+    '''
+    Creates <DataFrame> containing summary information from game
+    @param <dict> summary: the <dict> in dictTE containing 'm_instanceList'
+    @return: <DataFrame> of summary information
+    '''
+    gameTypeMap = {0: 'Custom',
+                   50001: 'Quick Match',
+                   50021: 'AI Coop',
+                   50051: 'Unranked Draft',
+                   50061: 'Hero League',
+                   50071: 'Team League'}
+    # references init_data 'm_ammId' to determine GameType in conjunction with the map defined above
+    if isinstance(m_gameDescription['m_gameOptions_m_ammId'], float):
+        gameTypeId = 0
+    else:
+        gameTypeId = m_gameDescription['m_gameOptions_m_ammId'][0]
+
+    gameType = gameTypeMap[gameTypeId]
+
+    gameTime = summary['m_instanceList'][0]['m_values'][0][0]['m_time']
+    dictSummary = {'replayId': [replayId] * 10,
+                   'GameTime': [gameTime] * 10,
+                   'GameType': [gameType] * 10,
+                   'UserId': [x for x in dfDetails['m_userId']],
+                   'PlayerName': [x for x in dfDetails['m_name']],
+                   'Hero': [x for x in dfDetails['m_hero']],
+                   'Mount': [x for x in df_m_slots.loc[df_m_slots['m_userId'] < 10]['m_mount']],
+                   'Skin': [x for x in df_m_slots.loc[df_m_slots['m_userId'] < 10]['m_skin']],
+                   'Silenced': [x for x in df_m_slots.loc[df_m_slots['m_userId'] < 10]['m_hasSilencePenalty']]}
+
+    for i in range(1, 8):
+        key = 'Tier ' + str(i) + ' Choice'
+        if key in df_m_stringData:
+            dictSummary[key] = [x for x in df_m_stringData.loc[df_m_stringData['Tier 1 Choice'] > 0][key]]
+
+    for d in summary['m_instanceList']:
+        tempKey = d['m_name']
+        tempVal = []
+        for i in d['m_values']:
+            if len(i) != 0:
+                tempVal.append(i[0]['m_value'])
+        dictSummary[tempKey] = tempVal
+
+    dfSummary = pd.DataFrame(dictSummary)
+    return dfSummary
+
+
+# dictInitData = createDictInitData('../replayData/QM/init_data.txt')
+# replayId = getReplayId(dictInitData)
 
 if __name__ == '__main__':
-    dictTE = createDictTGE('../replayData/tracker_events.txt')
-    # dictGE = createDictTGE('../replayData/game_events.txt')
-    dictHeader = prepDictHeader(createDictAEDH('../replayData/header.txt'))
-    dictDetails = prepDictDetails(createDictAEDH('../replayData/details.txt'))
+    dictTE = createDictTGE('../replayData/QM/tracker_events.txt')
+    # dictGE = createDictTGE('../replayData/AICoop/game_events.txt')
+    dictHeader = prepDictHeader(createDictAEDH('../replayData/QM/header.txt'))
+    dictDetails = prepDictDetails(createDictAEDH('../replayData/QM/details.txt'))
     m_gameDescription, m_userInitialData, m_slots = prepDictInitData(dictInitData)
-    parentTE, m_intData, m_stringData, m_fixedData = prepDictTE(dictTE)
+    parentTE, m_intData, m_stringData, m_fixedData, summary = prepDictTE(dictTE)
 
     dfTE = pd.DataFrame(dictTE)
     # dfGE = pd.DataFrame(dictGE)
@@ -534,3 +621,4 @@ if __name__ == '__main__':
     df_m_intData = pd.DataFrame(m_intData)
     df_m_stringData = pd.DataFrame(m_stringData)
     df_m_fixedData = pd.DataFrame(m_fixedData)
+    dfSummary = prepSummary(summary)
