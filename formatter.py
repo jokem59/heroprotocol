@@ -1,3 +1,5 @@
+#!/usr/bin/python
+
 import ast
 import hashlib
 import collections
@@ -6,13 +8,13 @@ import numpy as np
 import re
 
 
-def createDictTGE(output):
+def createDictTGE(input, replayId):
     '''
     Converts raw heroprotocol outputs --trackerevents, --gameevents to a <dict>.
-    @param <file> parserOutput: raw heroprotocol outputs --trackerevents, --gameevents
+    @param <file> input: raw heroprotocol outputs --trackerevents, --gameevents
     @return: <dictionary> of raw heroprotocol outputs
     '''
-    with open(output, 'r') as f:
+    with open(input, 'r') as f:
         lines = f.readlines()
 
     temp_string = ''
@@ -31,24 +33,26 @@ def createDictTGE(output):
         temp_string += line.rstrip()
 
     temp_string += "]"
+
     dictEvents = ast.literal_eval(temp_string)
+
     for i in dictEvents:
         i['replayId'] = replayId
 
     return dictEvents
 
 
-def prepDictTE(dictTE):
+def prepDictTE(listTE, replayId):
     '''
     Flattens tracker events <dict> and returns 4 sub-<dict> ready for Pandas <DataFrame> conversion.  Blank values
     are populated with np.nan.
-    @param <list> dictTE: <list> of <dict> of --trackerevents, the output of createDictTGE
+    @param <list> listTE: <list> of <dict> of --trackerevents, the output of createDictTGE
     @return: <list> dictTE, <dict> m_intData, <dict> m_stringData, <dict> m_fixedData
     '''
     # initialize keys of parent table
     parentKeys = []
     parentTE = {}
-    for d in dictTE:
+    for d in listTE:
         for k in d.keys():
             if k not in parentKeys:
                 parentKeys.append(k)
@@ -59,13 +63,15 @@ def prepDictTE(dictTE):
 
     # populate parent table
     listLength = 0
-    for d in dictTE:
+    for d in listTE:
         listLength += 1
         for i in d:
             parentTE[i].append(d[i])
         for e in parentTE:
             if len(parentTE[e]) < listLength:
                 parentTE[e].append(np.nan)
+
+    parentTE['replayId'] = [replayId] * len(listTE)
 
     # clean parentTE
     cleanParentTE = ['m_instanceList', 'm_items', 'm_count', 'm_killerUnitTagIndex', 'm_killerUnitTagRecycle',
@@ -246,23 +252,31 @@ def populateFromEntry(parentTE, subDict, entry, i):
             subDict[k].append(np.nan)
 
 
-def createDictInitData(initData):
+def createDictInitData(initData, type="text"):
     '''
     Converts raw heroprotocol outputs --initdata to a <dict>.
     @param <file> initData: raw data output of heroprotocol --initdata
     @return: python <dict> of --initdata for replayId information and JSON conversion
     '''
-    with open(initData, 'r') as f:
-        lines = f.readlines()
-    with open(initData, 'w') as f:
-        dict_start = False
-        for line in lines:
-            if line[0] == '{' or dict_start:
-                dict_start = True
-                f.write(line)
-            continue
-    with open(initData, 'r') as f:
-        dictInitData = ast.literal_eval(f.read())
+    if type == "text":
+        with open(initData, 'r') as f:
+            lines = f.readlines()
+        with open(initData, 'w') as f:
+            dict_start = False
+            for line in lines:
+                if line[0] == '{' or dict_start:
+                    dict_start = True
+                    f.write(line)
+                continue
+        with open(initData, 'r') as f:
+            dictInitData = ast.literal_eval(f.read())
+
+    else:
+        initData['m_syncLobbyState']['m_gameDescription'].pop('m_cacheHandles', None)
+        initData['m_syncLobbyState']['m_gameDescription'].pop('m_mapFileName', None)
+        initData['m_syncLobbyState']['m_gameDescription'].pop('m_slotDescriptions', None)
+
+        return initData
 
     dictInitData['m_syncLobbyState']['m_gameDescription'].pop('m_cacheHandles', None)
     dictInitData['m_syncLobbyState']['m_gameDescription'].pop('m_mapFileName', None)
@@ -271,23 +285,27 @@ def createDictInitData(initData):
     return dictInitData
 
 
-def createDictAEDH(output):
+def createDictAEDH(input, replayId, type="text"):
     '''
     Converts raw heroprotocol outputs --header, --details, --attributeevents to a <dict>.
-    @param <file> output: raw data output of heroprotocol --header, --details, --attributeevents
+    @param <file> input: raw data output of heroprotocol --header, --details, --attributeevents
     @return: python <dict> of --header, --details, --attributeevents
     '''
-    with open(output, 'r') as f:
-        dictOutput = ast.literal_eval(f.read())
-    try:
-        if dictOutput['m_cacheHandles']:
-            dictOutput['m_cacheHandles'] = ['']
-    except:
-        pass
+    if type == 'text':
+        with open(input, 'r') as f:
+            dictInput = ast.literal_eval(f.read())
+        try:
+            if dictInput['m_cacheHandles']:
+                dictInput['m_cacheHandles'] = ['']
+        except:
+            pass
+    else:
+        input['replayId'] = replayId
+        return input
 
-    dictOutput['replayId'] = replayId
+    dictInput['replayId'] = replayId
 
-    return dictOutput
+    return dictInput
 
 
 def getReplayId(dictInitData):
@@ -389,7 +407,7 @@ def flatten(d, parent_key='', sep='_'):
     return dict(items)
 
 
-def prepDictInitData(dictInitData):
+def prepDictInitData(dictInitData, replayId):
     '''
     Splits <dict> of InitData into the following tables: m_gameDescription, m_userInitialData, m_slots
     Reference the schema diagram for key breakout
@@ -495,7 +513,7 @@ def prepDictHeader(dictHeader):
     return dictHeader
 
 
-def prepDictDetails(dictDetails):
+def prepDictDetails(dictDetails, replayId):
     '''
     Converts dictDetails into dict ready for DataFrame conversion
     '''
@@ -551,7 +569,7 @@ def testTEData(parentTE, m_intData, m_stringData, m_fixedData):
         index += 1
 
 
-def prepSummary(summary):
+def prepSummary(summary, m_gameDescription, dfHeader, dfDetails, df_m_slots, df_m_stringData, replayId):
     '''
     Creates <DataFrame> containing summary information from game
     @param <dict> summary: the <dict> in dictTE containing 'm_instanceList'
@@ -575,6 +593,8 @@ def prepSummary(summary):
     dictSummary = {'replayId': [replayId] * 10,
                    'GameTime': [gameTime] * 10,
                    'GameType': [gameType] * 10,
+                   'DataBuildNum': [dfHeader['m_dataBuildNum'][0]] * 10,
+                   'Win_Loss': ['Win' if x == 1 else 'Loss' for x in dfDetails['m_result']],
                    'UserId': [x for x in dfDetails['m_userId']],
                    'PlayerName': [x for x in dfDetails['m_name']],
                    'Hero': [x for x in dfDetails['m_hero']],
@@ -586,6 +606,8 @@ def prepSummary(summary):
         key = 'Tier ' + str(i) + ' Choice'
         if key in df_m_stringData:
             dictSummary[key] = [x for x in df_m_stringData.loc[df_m_stringData['Tier 1 Choice'] > 0][key]]
+        else:
+            dictSummary[key] = ['', '', '', '', '', '', '', '', '', '']
 
     for d in summary['m_instanceList']:
         tempKey = d['m_name']
@@ -599,15 +621,30 @@ def prepSummary(summary):
     return dfSummary
 
 
-# dictInitData = createDictInitData('../replayData/QM/init_data.txt')
-# replayId = getReplayId(dictInitData)
+def generateInitialData(path):
+    '''
+    Generates the initial data required to build <DataFrames>
+    @param <string> path: destination of raw output *.txt files
+    @return <dict> dictInitData: used to initialized the remainder of <dict> and <DataFrame>
+    @return <str> replayId: unique identifier
+    '''
+    dictInitData = createDictInitData(path + 'init_data.txt')
+    replayId = getReplayId(dictInitData)
 
-if __name__ == '__main__':
-    dictTE = createDictTGE('../replayData/QM/tracker_events.txt')
-    # dictGE = createDictTGE('../replayData/AICoop/game_events.txt')
-    dictHeader = prepDictHeader(createDictAEDH('../replayData/QM/header.txt'))
-    dictDetails = prepDictDetails(createDictAEDH('../replayData/QM/details.txt'))
-    m_gameDescription, m_userInitialData, m_slots = prepDictInitData(dictInitData)
+    return dictInitData, replayId
+
+
+def testGenerateSummary(path, dictInitData, replayId):
+    '''
+    Generates all <DataFrame> for data mining.
+    @param <string> path: destination of raw output *.txt files
+    @retrun <DataFrame> dfSummary: summary data
+    '''
+    dictTE = createDictTGE(path + 'tracker_events.txt', replayId)
+    # dictGE = createDictTGE(path + 'game_events.txt', replayId)
+    dictHeader = prepDictHeader(createDictAEDH(path + 'header.txt', replayId))
+    dictDetails = prepDictDetails(createDictAEDH(path + 'details.txt', replayId), replayId)
+    m_gameDescription, m_userInitialData, m_slots = prepDictInitData(dictInitData, replayId)
     parentTE, m_intData, m_stringData, m_fixedData, summary = prepDictTE(dictTE)
 
     dfTE = pd.DataFrame(dictTE)
@@ -621,4 +658,31 @@ if __name__ == '__main__':
     df_m_intData = pd.DataFrame(m_intData)
     df_m_stringData = pd.DataFrame(m_stringData)
     df_m_fixedData = pd.DataFrame(m_fixedData)
-    dfSummary = prepSummary(summary)
+    dfSummary = prepSummary(summary, m_gameDescription, dfHeader, dfDetails, df_m_slots, df_m_stringData, replayId)
+
+    return dfSummary
+
+
+if __name__ == '__main__':
+    dictInitData = createDictInitData('../replayData/QM/init_data.txt')
+    replayId = getReplayId(dictInitData)
+
+    dictTE = createDictTGE(path + 'tracker_events.txt', replayId)
+    # dictGE = createDictTGE(path + 'game_events.txt', replayId)
+    dictHeader = prepDictHeader(createDictAEDH(path + 'header.txt', replayId))
+    dictDetails = prepDictDetails(createDictAEDH(path + 'details.txt', replayId), replayId)
+    m_gameDescription, m_userInitialData, m_slots = prepDictInitData(dictInitData, replayId)
+    parentTE, m_intData, m_stringData, m_fixedData, summary = prepDictTE(dictTE)
+
+    dfTE = pd.DataFrame(dictTE)
+    # dfGE = pd.DataFrame(dictGE)
+    dfHeader = pd.DataFrame(dictHeader)
+    dfDetails = pd.DataFrame(dictDetails)
+    df_m_gameDescription = pd.DataFrame(m_gameDescription)
+    df_m_userInitialData = pd.DataFrame(m_userInitialData)
+    df_m_slots = pd.DataFrame(m_slots)
+    dfParentTE = pd.DataFrame(parentTE)
+    df_m_intData = pd.DataFrame(m_intData)
+    df_m_stringData = pd.DataFrame(m_stringData)
+    df_m_fixedData = pd.DataFrame(m_fixedData)
+    dfSummary = prepSummary(summary, m_gameDescription, dfHeader, dfDetails, df_m_slots, df_m_stringData, replayId)
