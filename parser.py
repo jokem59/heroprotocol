@@ -34,10 +34,12 @@ class EventLogger:
 
 
 if __name__ == '__main__':
-    for filename in os.listdir('replays/'):
+    path = 'replays/'
+    for filename in os.listdir(path):
         if filename.endswith('.StormReplay'):
+            print filename, "Processing!"
 
-            archive = mpyq.MPQArchive('replays/' + filename)
+            archive = mpyq.MPQArchive(path + filename)
 
             logger = EventLogger()
 
@@ -63,7 +65,9 @@ if __name__ == '__main__':
             replayId = fmt.getReplayId(dictInitData)
 
             if fmt.replayExists('GameData.csv', replayId):
-                print "Replay data already captured, skipping to next replay file..."
+                print "Replay data already captured, removing", filename
+                os.remove(path + filename)
+                print "Next file..."
 
             else:
                 m_gameDescription, m_userInitialData, m_slots = fmt.prepDictInitData(dictInitData, replayId)
@@ -110,8 +114,8 @@ if __name__ == '__main__':
                     dfPlayerData.to_csv(f, header=False, index=False)
 
                 #move replay file to archive folder
-                os.rename('replays/' + filename, 'replays/archive/' + filename)
+                os.rename(path + filename, path + 'archive/' + filename)
         else:
-            print "Not a replay file:", filename
+            print "Not a replay file:", filename, "\n"
 
 

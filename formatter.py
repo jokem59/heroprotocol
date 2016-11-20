@@ -589,7 +589,8 @@ def prepSummary(summary, m_gameDescription, dfHeader, dictDetails, dfDetails, df
 
     gameType = gameTypeMap[gameTypeId]
 
-    gameTime = summary['m_instanceList'][0]['m_values'][0][0]['m_time']
+    # use summary['m_instnaceList'][0]['m_values'][2] because sometimes zero index has no values
+    gameTime = summary['m_instanceList'][0]['m_values'][2][0]['m_time']
     dictSummary = {'ReplayId': [replayId] * 10,
                    'GameTime': [gameTime] * 10,
                    'GameType': [gameType] * 10,
