@@ -569,7 +569,7 @@ def testTEData(parentTE, m_intData, m_stringData, m_fixedData):
         index += 1
 
 
-def prepSummary(summary, m_gameDescription, dfHeader, dfDetails, df_m_slots, df_m_stringData, replayId):
+def prepSummary(summary, m_gameDescription, dfHeader, dictDetails, dfDetails, df_m_slots, df_m_stringData, replayId):
     '''
     Creates <DataFrame> containing summary information from game
     @param <dict> summary: the <dict> in dictTE containing 'm_instanceList'
@@ -590,9 +590,10 @@ def prepSummary(summary, m_gameDescription, dfHeader, dfDetails, df_m_slots, df_
     gameType = gameTypeMap[gameTypeId]
 
     gameTime = summary['m_instanceList'][0]['m_values'][0][0]['m_time']
-    dictSummary = {'replayId': [replayId] * 10,
+    dictSummary = {'ReplayId': [replayId] * 10,
                    'GameTime': [gameTime] * 10,
                    'GameType': [gameType] * 10,
+                   'Map': [dictDetails['m_title']] * 10,
                    'DataBuildNum': [dfHeader['m_dataBuildNum'][0]] * 10,
                    'Win_Loss': ['Win' if x == 1 else 'Loss' for x in dfDetails['m_result']],
                    'UserId': [x for x in dfDetails['m_userId']],
@@ -634,7 +635,7 @@ def generateInitialData(path):
     return dictInitData, replayId
 
 
-def testGenerateSummary(path, dictInitData, replayId):
+def generateSummary(path, dictInitData, replayId):
     '''
     Generates all <DataFrame> for data mining.
     @param <string> path: destination of raw output *.txt files
@@ -643,14 +644,15 @@ def testGenerateSummary(path, dictInitData, replayId):
     dictTE = createDictTGE(path + 'tracker_events.txt', replayId)
     # dictGE = createDictTGE(path + 'game_events.txt', replayId)
     dictHeader = prepDictHeader(createDictAEDH(path + 'header.txt', replayId))
-    dictDetails = prepDictDetails(createDictAEDH(path + 'details.txt', replayId), replayId)
+    dictDetails = createDictAEDH(path + 'details.txt', replayId)
+    prepDictDetails = prepDictDetails(dictDetails, replayId)
     m_gameDescription, m_userInitialData, m_slots = prepDictInitData(dictInitData, replayId)
-    parentTE, m_intData, m_stringData, m_fixedData, summary = prepDictTE(dictTE)
+    parentTE, m_intData, m_stringData, m_fixedData, summary = prepDictTE(dictTE, replayId)
 
     dfTE = pd.DataFrame(dictTE)
     # dfGE = pd.DataFrame(dictGE)
     dfHeader = pd.DataFrame(dictHeader)
-    dfDetails = pd.DataFrame(dictDetails)
+    dfDetails = pd.DataFrame(prepDictDetails)
     df_m_gameDescription = pd.DataFrame(m_gameDescription)
     df_m_userInitialData = pd.DataFrame(m_userInitialData)
     df_m_slots = pd.DataFrame(m_slots)
@@ -663,21 +665,72 @@ def testGenerateSummary(path, dictInitData, replayId):
     return dfSummary
 
 
+def gameData(dfSummary):
+    '''
+    Generates <DataFrame> for Map level data
+    @param <DataFrame> dfSummary: returned value of prepSummary()
+    @return <DataFrame>: a subset of dfSummary containing 'ReplayId', 'DataBuildNum', 'GameTime'
+                        , 'GameType', 'Map' with one row per game
+    '''
+    replayId = dfSummary['ReplayId'][0]
+    dataBuildNum = dfSummary['DataBuildNum'][0]
+    gameTime = dfSummary['GameTime'][0]
+    gameType = dfSummary['GameType'][0]
+    mapName = dfSummary['Map'][0]
+    d = {'ReplayId': replayId, 'DataBuildNum': dataBuildNum, 'GameTime': gameTime,
+         'GameType': gameType, 'Map': mapName}
+    return pd.DataFrame(data=d, index=[0])
+
+
+def playerData(dfSummary):
+    '''
+    Generates <DataFrame> for player data.
+    @param <DataFrame> dfSummary: returned value of prepSummary()
+    @return <DataFrame>: a subset of dfSummary with 10 rows per game
+    '''
+    df = dfSummary[['ReplayId', 'PlayerName', 'Hero', 'UserId', 'Takedowns', 'SoloKill', 'Assists', 'Deaths',
+                    'HighestKillStreak', 'HeroDamage', 'SiegeDamage', 'StructureDamage', 'MinionDamage',
+                    'CreepDamage', 'SummonDamage', 'TimeCCdEnemyHeroes', 'Healing', 'SelfHealing',
+                    'DamageTaken', 'ExperienceContribution', 'TownKills', 'TimeSpentDead', 'MercCampCaptures',
+                    'WatchTowerCaptures', 'MetaExperience', 'Win_Loss', 'Tier 1 Choice',
+                    'Tier 2 Choice', 'Tier 3 Choice', 'Tier 4 Choice',
+                    'Tier 5 Choice', 'Tier 6 Choice', 'Tier 7 Choice']]
+    return df
+
+
+def replayExists(currentFile, replayId):
+    '''
+    Checks if replayId exists in current file.
+    @param currentFile: Pyton csv object
+    @param <str> replayId: replayId
+    @return <bool>: True/False
+    '''
+    dfReplayId = pd.read_csv(currentFile, usecols=['ReplayId'])
+
+    if replayId in list(dfReplayId['ReplayId']):
+        return True
+    else:
+        return False
+
+
 if __name__ == '__main__':
-    dictInitData = createDictInitData('../replayData/QM/init_data.txt')
+    dictInitData = createDictInitData('testData/QM/init_data.txt')
     replayId = getReplayId(dictInitData)
+
+    path = "testData/QM/"
 
     dictTE = createDictTGE(path + 'tracker_events.txt', replayId)
     # dictGE = createDictTGE(path + 'game_events.txt', replayId)
     dictHeader = prepDictHeader(createDictAEDH(path + 'header.txt', replayId))
-    dictDetails = prepDictDetails(createDictAEDH(path + 'details.txt', replayId), replayId)
+    dictDetails = createDictAEDH(path + 'details.txt', replayId)
+    prepDictDetails = prepDictDetails(dictDetails, replayId)
     m_gameDescription, m_userInitialData, m_slots = prepDictInitData(dictInitData, replayId)
-    parentTE, m_intData, m_stringData, m_fixedData, summary = prepDictTE(dictTE)
+    parentTE, m_intData, m_stringData, m_fixedData, summary = prepDictTE(dictTE, replayId)
 
     dfTE = pd.DataFrame(dictTE)
     # dfGE = pd.DataFrame(dictGE)
     dfHeader = pd.DataFrame(dictHeader)
-    dfDetails = pd.DataFrame(dictDetails)
+    dfDetails = pd.DataFrame(prepDictDetails)
     df_m_gameDescription = pd.DataFrame(m_gameDescription)
     df_m_userInitialData = pd.DataFrame(m_userInitialData)
     df_m_slots = pd.DataFrame(m_slots)
@@ -685,4 +738,7 @@ if __name__ == '__main__':
     df_m_intData = pd.DataFrame(m_intData)
     df_m_stringData = pd.DataFrame(m_stringData)
     df_m_fixedData = pd.DataFrame(m_fixedData)
-    dfSummary = prepSummary(summary, m_gameDescription, dfHeader, dfDetails, df_m_slots, df_m_stringData, replayId)
+    dfSummary = prepSummary(summary, m_gameDescription, dfHeader, dictDetails, dfDetails, df_m_slots
+                            , df_m_stringData, replayId)
+    dfGameData = gameData(dfSummary)
+    dfPlayerData = playerData(dfSummary)

@@ -5,6 +5,7 @@ import formatter as fmt
 import pandas as pd
 import pprint
 import json
+import os
 
 from mpyq import mpyq
 import protocol29406
@@ -33,67 +34,84 @@ class EventLogger:
 
 
 if __name__ == '__main__':
-    # TODO: Check to ensure that every file in the directory is a *.StormReplay file before looping through
-    # TODO: loop through each *.StormReplay file in specified directory
-    # replace argument with *.StormReplay
-    archive = mpyq.MPQArchive('replays/HL HOTS Logs Shared Replay.StormReplay')
+    for filename in os.listdir('replays/'):
+        if filename.endswith('.StormReplay'):
 
-    logger = EventLogger()
+            archive = mpyq.MPQArchive('replays/' + filename)
 
-    # Read the protocol header, this can be read with any protocol
-    contents = archive.header['user_data_header']['content']
-    # headers is a <dict>
-    header = protocol29406.decode_replay_header(contents)
+            logger = EventLogger()
 
-    # The header's baseBuild determines which protocol to use
-    baseBuild = header['m_version']['m_baseBuild']
-    try:
-        protocol = __import__('protocol%s' % (baseBuild,))
-    except:
-        print >> sys.stderr, 'Unsupported base build: %d' % baseBuild
-        sys.exit(1)
+            # Read the protocol header, this can be read with any protocol
+            contents = archive.header['user_data_header']['content']
+            # headers is a <dict>
+            header = protocol29406.decode_replay_header(contents)
 
-    # Create pertinent <dict>/<DataFrames>
+            # The header's baseBuild determines which protocol to use
+            baseBuild = header['m_version']['m_baseBuild']
+            try:
+                protocol = __import__('protocol%s' % (baseBuild,))
+            except:
+                print >> sys.stderr, 'Unsupported base build: %d' % baseBuild
+                sys.exit(1)
 
-    # initialize initdata
-    contents = archive.read_file('replay.initData')
-    initdata = protocol.decode_replay_initdata(contents) # this is a <dict>
-    dictInitData = fmt.createDictInitData(initdata, type="dict")
-    replayId = fmt.getReplayId(dictInitData)
+            # Create pertinent <dict>/<DataFrames>
 
-    m_gameDescription, m_userInitialData, m_slots = fmt.prepDictInitData(dictInitData, replayId)
+            # initialize initdata
+            contents = archive.read_file('replay.initData')
+            initdata = protocol.decode_replay_initdata(contents) # this is a <dict>
+            dictInitData = fmt.createDictInitData(initdata, type="dict")
+            replayId = fmt.getReplayId(dictInitData)
 
-    # initialize header
-    formattedHeader = fmt.prepDictHeader(header)
-    dfHeader = pd.DataFrame(formattedHeader)
+            if fmt.replayExists('GameData.csv', replayId):
+                print "Replay data already captured, skipping to next replay file..."
 
-    # initialize details
-    contents = archive.read_file('replay.details')
-    details = protocol.decode_replay_details(contents)
-    dictDetails = fmt.createDictAEDH(details, replayId, type="dict")
-    dictDetails = fmt.prepDictDetails(dictDetails, replayId)
+            else:
+                m_gameDescription, m_userInitialData, m_slots = fmt.prepDictInitData(dictInitData, replayId)
 
-    # Print tracker events
-    if hasattr(protocol, 'decode_replay_tracker_events'):
-        contents = archive.read_file('replay.tracker.events')
-        listTE = []
-        for event in protocol.decode_replay_tracker_events(contents):
-            listTE.append(event)
+                # initialize header
+                formattedHeader = fmt.prepDictHeader(header)
+                dfHeader = pd.DataFrame(formattedHeader)
 
-        parentTE, m_intData, m_stringData, m_fixedData, summary = fmt.prepDictTE(listTE, replayId)
+                # initialize details
+                contents = archive.read_file('replay.details')
+                details = protocol.decode_replay_details(contents)
+                dictDetails = fmt.createDictAEDH(details, replayId, type="dict")
+                preppedDetails = fmt.prepDictDetails(dictDetails, replayId)
 
-    # prep summary data
-    dfTE = pd.DataFrame(parentTE)
-    # dfGE = pd.DataFrame(dictGE)
-    dfDetails = pd.DataFrame(dictDetails)
-    df_m_gameDescription = pd.DataFrame(m_gameDescription)
-    df_m_userInitialData = pd.DataFrame(m_userInitialData)
-    df_m_slots = pd.DataFrame(m_slots)
-    dfParentTE = pd.DataFrame(parentTE)
-    df_m_intData = pd.DataFrame(m_intData)
-    df_m_stringData = pd.DataFrame(m_stringData)
-    df_m_fixedData = pd.DataFrame(m_fixedData)
-    dfSummary = fmt.prepSummary(summary, m_gameDescription, dfHeader, dfDetails, df_m_slots, df_m_stringData, replayId)
-    dfSummary.to_csv('test.csv')
+                # Print tracker events
+                if hasattr(protocol, 'decode_replay_tracker_events'):
+                    contents = archive.read_file('replay.tracker.events')
+                    listTE = []
+                    for event in protocol.decode_replay_tracker_events(contents):
+                        listTE.append(event)
+
+                    parentTE, m_intData, m_stringData, m_fixedData, summary = fmt.prepDictTE(listTE, replayId)
+
+                # prep summary data
+                dfTE = pd.DataFrame(parentTE)
+                # dfGE = pd.DataFrame(dictGE)
+                dfDetails = pd.DataFrame(preppedDetails)
+                df_m_gameDescription = pd.DataFrame(m_gameDescription)
+                df_m_userInitialData = pd.DataFrame(m_userInitialData)
+                df_m_slots = pd.DataFrame(m_slots)
+                dfParentTE = pd.DataFrame(parentTE)
+                df_m_intData = pd.DataFrame(m_intData)
+                df_m_stringData = pd.DataFrame(m_stringData)
+                df_m_fixedData = pd.DataFrame(m_fixedData)
+                dfSummary = fmt.prepSummary(summary, m_gameDescription, dfHeader, dictDetails, dfDetails
+                                            , df_m_slots, df_m_stringData, replayId)
+                dfGameData = fmt.gameData(dfSummary)
+                dfPlayerData = fmt.playerData(dfSummary)
+
+                #append dfGameData and dfPlayerData to respective CSV files
+                with open('GameData.csv', 'a') as f:
+                    dfGameData.to_csv(f, header=False, index=False)
+                with open('PlayerData.csv', 'a') as f:
+                    dfPlayerData.to_csv(f, header=False, index=False)
+
+                #move replay file to archive folder
+                os.rename('replays/' + filename, 'replays/archive/' + filename)
+        else:
+            print "Not a replay file:", filename
 
 
