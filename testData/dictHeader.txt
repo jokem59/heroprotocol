@@ -1,0 +1,1 @@
+{"m_version_m_baseBuild": [46889], "m_version_m_major": [0], "m_version_m_build": [46889], "m_type": [2], "m_version_m_flags": [1], "replayId": ["8aa384650abd5e9bcc0e110ef8fc2e21"], "m_elapsedGameLoops": [13189], "m_useScaledTime": [false], "m_version_m_revision": [5], "m_dataBuildNum": [47133], "m_version_m_minor": [20]}

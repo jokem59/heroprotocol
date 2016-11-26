@@ -117,7 +117,7 @@ def prepDictTE(listTE, replayId):
     # edit m_stringData "Hero" key to remove 'Hero' prefix from values
     temp = []
     for i in m_stringData['Hero']:
-        if isinstance(i, str):
+        if isinstance(i, str) or isinstance(i, unicode):
             temp.append(i.replace('Hero', ''))
         else:
             temp.append(i)
@@ -146,20 +146,26 @@ def cleanTESubDict(subDict):
     @param <dict> subDict: sub <dict> to the parent tracker events <dict>
     '''
     for i in subDict:
+        takeAction = True
         if isinstance(i, list):
             # i is a list of dictionaries associated with a tracker event
             temp = []
             for d in i:
                 # record value of 'm_key' and 'm_value'
-                key = d['m_key']
-                value = d['m_value']
-                # add to new temp list as a dict
-                temp.append({key: value})
+                try:
+                    key = d['m_key']
+                    value = d['m_value']
+                    # add to new temp list as a dict
+                    temp.append({key: value})
+                except:
+                    takeAction = False
+                    continue
             # after iterating through all d in current list, clear list
-            i[:] = []
-            # set current list equal to temp list
-            for d in temp:
-                i.append(d)
+            if takeAction:
+                i[:] = []
+                # set current list equal to temp list
+                for d in temp:
+                    i.append(d)
 
 
 def populateTESubDicts(parentTE, subDict, dictName):
@@ -380,8 +386,8 @@ def prepForDf(dictionary):
         if isinstance(dictionary[i], dict) and len(dictionary[i]) > 1:
             prepForDf(dictionary[i])
         # USE CASE 8: populate empty field with np.nan
-        if dictionary[i] is None:
-            dictionary[i] = np.nan
+        if dictionary[i] is np.nan:
+            dictionary[i] = n
             continue
         if len(dictionary[i]) == 0:
             dictionary[i] = np.nan
@@ -714,11 +720,40 @@ def replayExists(currentFile, replayId):
         return False
 
 
+def isMismatch(dict1, dict2):
+    '''
+    Used to support the unittest script tester.py.  Required to compared <dict> with <list> that include np.nan.
+    np.nan == np.nan > False
+    @param dict1 <dict>: loaded from JSON
+    @param dict2 <dict>: generated from function
+    @return <bool>: False if two <dict> are identical
+    '''
+    mismatch = False
+
+    for k in dict1:
+        for i in range(0, len(dict1[k])):
+            if isinstance(dict1[k][i], float):
+                if np.isnan(dict1[k][i]) and np.isnan(dict2[k][i]):
+                    continue
+                else:
+                    print "\ndict 1:", dict1[k][i], "dict 2:", dict2[k][i]
+                    mismatch = True
+                    break
+            if dict1[k][i] == dict2[k][i]:
+                continue
+            else:
+                print "\ndict 1:", dict1[k][i], "dict 2:", dict2[k][i]
+                mismatch = True
+                break
+
+    return mismatch
+
+
 if __name__ == '__main__':
-    dictInitData = createDictInitData('testData/QM/init_data.txt')
+    dictInitData = createDictInitData('testData/init_data.txt')
     replayId = getReplayId(dictInitData)
 
-    path = "testData/QM/"
+    path = "testData/"
 
     dictTE = createDictTGE(path + 'tracker_events.txt', replayId)
     # dictGE = createDictTGE(path + 'game_events.txt', replayId)
