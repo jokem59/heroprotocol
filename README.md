@@ -1,3 +1,5 @@
+_Note: See bottom of document for parser documentation_
+
 # Hero Protocol
 
 heroprotocol is a reference Python library and standalone tool to decode Heroes of the Storm replay files into Python data structures.
@@ -75,6 +77,26 @@ Some notes on tracker events:
 * You may receive a NNet.Replay.Tracker.SUnitDiedEvent after either a UnitInit or UnitBorn event for the corresponding unit tag.
 * In NNet.Replay.Tracker.SPlayerStatsEvent, m_scoreValueFoodUsed and m_scoreValueFoodMade are in fixed point (divide by 4096 for integer values). All other values are in integers.
 * There's a known issue where revived units are not tracked, and placeholder units track death but not birth.
+
+# Parsing Utility
+
+These tools extend the functionality of the Blizzard released heroprotocol reference Python Library. Currently, tools will extract summary data found from —initdata ‘m_instanceList’ and compile them into a CSV file. 
+
+## How To Use
+
+Place *.StormReplay files in the ../replays/ folder.
+
+Run the parser.py file in the terminal
+
+'python parser.py'
+
+This will loop through all replays in ../replays/ and archive parsed *.StormReplay files in the ../replays/archive/ directory. Each replay is assigned a unique ID using an MD5 hash utilizing the ‘m_randomValue’ and the string of all the player names in the game.
+
+# Machine Learning Utility
+
+7 December 2016 - Currently do not have enough *.StormReplay files to constitute a sufficiently large dataset.  In liue of this, using HotsLogs data exports.
+
+This utility is a work in progress.  As of now, it implements a SGDClassifier via the SciKit library based on parsed and derived data from the HotsLog exports.
 
 # License
 
